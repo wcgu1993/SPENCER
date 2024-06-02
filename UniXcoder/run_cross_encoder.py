@@ -236,13 +236,13 @@ def train(args, model, tokenizer):
             logger.info("  %s = %s", key, round(value,4))    
             
         #save best model
-        if results['f1']>best_mrr:
-            best_mrr = results['f1']
+        if results['acc']>best_acc:
+            best_acc = results['acc']
             logger.info("  "+"*"*20)  
-            logger.info("  Best f1:%s",round(best_mrr,4))
+            logger.info("  Best acc:%s",round(best_acc,4))
             logger.info("  "+"*"*20)                          
 
-            checkpoint_prefix = 'checkpoint-best-f1'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))                        
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)                        
@@ -414,10 +414,9 @@ def main():
     results = {}
     if args.do_eval:
         if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-f1/model.bin'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
+            model = RobertaForSequenceClassification.from_pretrained(output_dir)    
         model.to(args.device)
         result = evaluate(args, model, tokenizer,args.eval_data_file)
         logger.info("***** Eval results *****")
@@ -426,10 +425,9 @@ def main():
             
     if args.do_test:
         if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-f1/model.bin'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
+            model = RobertaForSequenceClassification.from_pretrained(output_dir)       
         model.to(args.device)
         result = predict(args, model, tokenizer, args.test_data_file)
 

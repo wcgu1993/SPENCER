@@ -21,8 +21,6 @@ def preprocess_test_data(language, test_batch_size=1000):
     idxs = np.arange(len(data))
     data = np.array(data, dtype=object)
 
-    # np.random.seed(0)   # set random seed so that random things are reproducible
-    # np.random.shuffle(idxs)
     data = data[idxs]
     batched_data = chunked(data, test_batch_size)
 

@@ -1,5 +1,5 @@
 lang=python
-output_dir=./saved_models/dual_encoder_12_to_3_rerun/$lang
+output_dir=./saved_models/dual_encoder/$lang
 mkdir -p $output_dir
 
 
@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python run_dual_encoder.py \
     --model_name_or_path microsoft/unixcoder-base  \
     --do_eval \
     --train_data_file ../data/dual_encoder/$lang/train.txt \
-    --eval_data_file ../data/dual_encoder/$lang/test.txt \
+    --eval_data_file ../data/dual_encoder/$lang/valid.txt \
     --num_train_epochs 10 \
     --code_length 256 \
     --nl_length 128 \

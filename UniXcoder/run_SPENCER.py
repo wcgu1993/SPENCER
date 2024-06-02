@@ -169,11 +169,11 @@ def ACC(real,predict):
         if index!=-1: sum=sum+1  
     return sum/float(len(real))
 
-def evaluate(args, model, distilled_model, cross_model, tokenizer, file_name, language):
+def evaluate(args, code_model, query_model, tokenizer, test_data_file)
 
-    test_dataset = TextDataset(tokenizer, args, file_name)
+    test_dataset = TextDataset(tokenizer, args, test_data_file)
     test_sampler = SequentialSampler(test_dataset)
-    test_dataloader = DataLoader(test_dataset, sampler=test_sampler, batch_size=args.eval_batch_size,num_workers=4)
+    test_dataloader = DataLoader(test_dataset, sampler=test_sampler, batch_size=args.eval_batch_size, num_workers=4)
      
     # Eval!
     logger.info("***** Running evaluation *****")
@@ -182,8 +182,8 @@ def evaluate(args, model, distilled_model, cross_model, tokenizer, file_name, la
     logger.info("  Batch size = %d", args.eval_batch_size)
 
     
-    model.eval()
-    distilled_model.eval()
+    code_model.eval()
+    query_model.eval()
     code_vecs = [] 
     nl_vecs = []
     n_processed = 0
@@ -191,86 +191,21 @@ def evaluate(args, model, distilled_model, cross_model, tokenizer, file_name, la
         code_inputs = batch[0].to(args.device)    
         nl_inputs = batch[1].to(args.device)
         with torch.no_grad():
-            code_vec = model(code_inputs=code_inputs) 
-            # nl_vec = model(nl_inputs=nl_inputs)
-            nl_vec = distilled_model(nl_inputs=nl_inputs) 
+            code_vec = code_model(code_inputs=code_inputs) 
+            nl_vec = query_model(nl_inputs=nl_inputs) 
             nl_vecs.append(nl_vec.cpu().numpy()) 
             code_vecs.append(code_vec.cpu().numpy()) 
         n_processed += batch[0].size(0)
-        # if n_processed > 10000:
-        #     break
- 
+
     code_vecs = np.concatenate(code_vecs,0)
     nl_vecs = np.concatenate(nl_vecs,0)
     
     num_pool = n_processed // 1000
-    # num_pool = 10
     accs1, accs3, accs5, mrrs = [], [], [], []
-    softmax = torch.nn.Softmax(dim=1)
-    # for i in tqdm(range(num_pool)):
-    #     code_pool = code_vecs[i*1000:(i+1)*1000]
-    #     codes = test_dataset.codes[i*1000:(i+1)*1000]
-    #     for j in tqdm(range(1000)): # for i in range(pool_size):
-    #         desc_vec = np.expand_dims(nl_vecs[i*1000+j], axis=0) # [1 x dim] 
-    #         sims = np.dot(code_pool, desc_vec.T)[:,0] # [pool_size]
-    #         predict = sims.argsort()[::-1]
-    #         predict1 = predict[:1]   
-    #         predict1 = [int(k) for k in predict1]
-    #         predict3 = predict[:3]   
-    #         predict3 = [int(k) for k in predict3]
-    #         predict5 = predict[:5]   
-    #         predict5 = [int(k) for k in predict5]
-    #         topk = predict[:5] 
-    #         if j in topk:
-    #             new_index = np.where(topk==j)  
-    #             nl = test_dataset.nls[i*1000+j]
-    #             selected_codes = [codes[k] for k in topk]
-    #             # print(nl)
-    #             # for k in topk:
-    #             #     print(codes[k])
-    #             inputs = convert_to_features(nl, selected_codes, tokenizer, args)
-    #             inputs = inputs.to(args.device) 
-    #             with torch.no_grad():
-    #                 outputs = cross_model(inputs,attention_mask=inputs.ne(1)) 
-    #             logits = outputs.logits
-               
-    #             # logits = softmax(logits)
-    #             scores = logits[:,1]
-
-    #             correct_score = logits[new_index[0],1]
-    #             _, indices = torch.sort(scores, descending=True)
-    #             _, indices = torch.sort(indices)
-    #             rank = int(indices[new_index[0]]) + 1
-    #             # print(output)
-    #             # print(topk)
-    #             # print(scores)
-    #             # print("old: ", new_index[0], " new: ", rank)
-    #             if rank <= 5:
-    #                 accs5.append(1)
-    #             else:
-    #                 accs5.append(0)
-                    
-    #             if rank <= 3:
-    #                 accs3.append(1)
-    #             else: 
-    #                 accs3.append(0)
-                    
-    #             if rank == 1:
-    #                 accs1.append(1)
-    #             else:
-    #                 accs1.append(0)
-                        
-    #             mrrs.append(1/rank)
-    #         else:    
-    #             real = [j]
-    #             accs1.append(ACC(real,predict1))
-    #             accs3.append(ACC(real,predict3))
-    #             accs5.append(ACC(real,predict5))
-    #             index = np.where(predict==j)
-    #             rank = int(index[0]) + 1
-    #             mrrs.append(1/rank)
-            # ndcgs.append(NDCG(real,predict))   
+    
+    
     file_dir = './results/{}'.format(language)
+
     for i in tqdm(range(num_pool)):
         code_pool = code_vecs[i*1000:(i+1)*1000]
         file = '{}_batch_result.txt'.format(i)
@@ -278,13 +213,6 @@ def evaluate(args, model, distilled_model, cross_model, tokenizer, file_name, la
             batched_data = chunked(f.readlines(), 1000)
             
         for j, batch_data in enumerate(batched_data): # for i in range(pool_size):
-        # for j in range(1000):
-            try:
-                desc_vec = np.expand_dims(nl_vecs[i*1000+j], axis=0) # [1 x dim] 
-            except:
-                print(len(nl_vecs))
-                print(i)
-                print(j)
             sims = np.dot(code_pool, desc_vec.T)[:,0] # [pool_size]
             predict = sims.argsort()[::-1]
             predict1 = predict[:1]   
@@ -293,9 +221,8 @@ def evaluate(args, model, distilled_model, cross_model, tokenizer, file_name, la
             predict3 = [int(k) for k in predict3]
             predict5 = predict[:5]   
             predict5 = [int(k) for k in predict5]
-            topk = predict[:2] 
+            topk = predict[:args.top_k] 
             if j in topk:
-            # if False:
                 correct_score = float(batch_data[j].strip().split('<CODESPLIT>')[-1])
                 scores = np.array([float(batch_data[k].strip().split('<CODESPLIT>')[-1]) for k in topk])
                 rank = np.sum(scores >= correct_score)
@@ -339,22 +266,14 @@ def main():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
-    parser.add_argument("--train_data_file", default=None, type=str, 
-                        help="The input training data file (a json file).")
-    parser.add_argument("--language", default=None, type=str, required=True,
-                        help="programming language.")
-    parser.add_argument("--saved_dir", default=None, type=str, required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--cross_output_dir", default=None, type=str, required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--eval_data_file", default=None, type=str,
-                        help="An optional input evaluation data file to evaluate the MRR(a jsonl file).")
-    parser.add_argument("--test_data_file", default=None, type=str,
-                        help="An optional input test data file to test the MRR(a josnl file).")
-    parser.add_argument("--codebase_file", default=None, type=str,
-                        help="An optional input test data file to codebase (a jsonl file).")  
+    parser.add_argument("--code_model_dir", default=None, type=str, required=True,
+                        help="The directory where the code model is.")
+    parser.add_argument("--query_model_dir", default=None, type=str, required=True,
+                        help="The directory where the query model is.")
+    parser.add_argument("--top_k", default=None, type=int, required=True,
+                        help="The recall number in dual encoder.")    
+    parser.add_argument("--test_data_file", default=None, type=str, required=True,
+                        help="The input test data file (a txt file).")
     
     parser.add_argument("--model_name_or_path", default=None, type=str,
                         help="The model checkpoint for weights initialization.")
@@ -367,28 +286,13 @@ def main():
                         help="Optional NL input sequence length after tokenization.")    
     parser.add_argument("--code_length", default=256, type=int,
                         help="Optional Code input sequence length after tokenization.") 
-    
-    parser.add_argument("--do_train", action='store_true',
-                        help="Whether to run training.")
-    parser.add_argument("--do_eval", action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_test", action='store_true',
-                        help="Whether to run eval on the test set.")  
-    parser.add_argument("--do_zero_shot", action='store_true',
-                        help="Whether to run eval on the test set.")     
-    parser.add_argument("--do_F2_norm", action='store_true',
-                        help="Whether to run eval on the test set.")      
 
-    parser.add_argument("--train_batch_size", default=4, type=int,
-                        help="Batch size for training.")
     parser.add_argument("--eval_batch_size", default=4, type=int,
                         help="Batch size for evaluation.")
     parser.add_argument("--learning_rate", default=5e-5, type=float,
                         help="The initial learning rate for Adam.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float,
                         help="Max gradient norm.")
-    parser.add_argument("--num_train_epochs", default=1, type=int,
-                        help="Total number of training epochs to perform.")
 
     parser.add_argument('--seed', type=int, default=42,
                         help="random seed for initialization")
@@ -410,60 +314,23 @@ def main():
     #build model
     tokenizer = RobertaTokenizer.from_pretrained(args.model_name_or_path)
     config = RobertaConfig.from_pretrained(args.model_name_or_path)
-    model = RobertaModel.from_pretrained(args.model_name_or_path)
-    config.num_hidden_layers = 3
-    distilled_model = RobertaModel.from_pretrained(args.model_name_or_path, config = config)
- 
-    cross_model = RobertaForSequenceClassification.from_pretrained(args.model_name_or_path) 
- 
+    code_model = RobertaModel.from_pretrained(args.code_model)
+    query_model = RobertaModel.from_pretrained(args.query_model)
 
-
-    
-    model = Model(model)
-    distilled_model = Model(distilled_model)
     logger.info("Training/evaluation parameters %s", args)
     
-    model.to(args.device)
-    cross_model.to(args.device)
+    code_model.to(args.device)
+    query_model.to(args.device)
     if args.n_gpu > 1:
-        model = torch.nn.DataParallel(model)  
-        cross_model = torch.nn.DataParallel(cross_model)
+        code_model = torch.nn.DataParallel(code_model)  
+        query_model = torch.nn.DataParallel(query_model)
       
-    # Evaluation
-    results = {}
-    if args.do_eval:
-        if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-            saved_dir = os.path.join(args.saved_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(saved_dir))      
-            output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            distilled_model_to_load = distilled_model.module if hasattr(distilled_model, 'module') else distilled_model  
-            distilled_model_to_load.load_state_dict(torch.load(output_dir))    
-            cross_checkpoint_prefix = 'checkpoint-best-f1/model.bin'
-            cross_output_dir = os.path.join(args.cross_output_dir, '{}'.format(cross_checkpoint_prefix))  
-            cross_model_to_load = cross_model.module if hasattr(cross_model, 'module') else cross_model  
-            cross_model_to_load.load_state_dict(torch.load(cross_output_dir)) 
-        model.to(args.device)
-        distilled_model.to(args.device)
-        cross_model.to(args.device)
-        result = evaluate(args, model, distilled_model, cross_model, tokenizer,args.eval_data_file, args.language)
-        logger.info("***** Eval results *****")
-        for key in sorted(result.keys()):
-            logger.info("  %s = %s", key, str(round(result[key],3)))
-            
-    if args.do_test:
-        if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-            output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
-        model.to(args.device)
-        result = evaluate(args, model, tokenizer,args.test_data_file)
-        logger.info("***** Eval results *****")
-        for key in sorted(result.keys()):
-            logger.info("  %s = %s", key, str(round(result[key],3)))
 
+    result = evaluate(args, code_model, query_model, tokenizer, args.test_data_file)
+    logger.info("***** Eval results *****")
+    for key in sorted(result.keys()):
+        logger.info("  %s = %s", key, str(round(result[key],3)))
+            
 
 if __name__ == "__main__":
     main()

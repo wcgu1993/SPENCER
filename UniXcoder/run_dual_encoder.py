@@ -226,13 +226,12 @@ def train(args, model, tokenizer):
             logger.info("  Best mrr:%s",round(best_mrr,4))
             logger.info("  "+"*"*20)                          
 
-            checkpoint_prefix = 'checkpoint-best-mrr'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))                        
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)                        
             model_to_save = model.module if hasattr(model,'module') else model
-            output_dir = os.path.join(output_dir, '{}'.format('model.bin')) 
-            torch.save(model_to_save.state_dict(), output_dir)
+            model_to_save.save_pretrained(output_dir) 
             logger.info("Saving model checkpoint to %s", output_dir)
 
 
@@ -253,27 +252,16 @@ def evaluate(args, model, tokenizer,file_name,eval_when_training=False):
     code_vecs = [] 
     nl_vecs = []
     n_processed = 0
-    time = []
     for batch in test_dataloader:
         code_inputs = batch[0].to(args.device)    
         nl_inputs = batch[1].to(args.device)
         with torch.no_grad():
             code_vec = model(code_inputs=code_inputs) 
-            start = datetime.now()
             nl_vec = model(nl_inputs=nl_inputs)
-            end = datetime.now()
-            time.append((end-start).total_seconds())
             nl_vecs.append(nl_vec.cpu().numpy()) 
             code_vecs.append(code_vec.cpu().numpy()) 
         n_processed += batch[0].size(0)
-    
-    output_file = "./time4.txt"
-    with open(output_file, "w") as writer:
-        logger.info("***** Output test results *****")
-        for single_time in time:
-            writer.write(str(single_time) + '\n')
-    
-    exit()
+
 
     model.train()    
     code_vecs = np.concatenate(code_vecs,0)
@@ -402,10 +390,9 @@ def main():
     results = {}
     if args.do_eval:
         if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
+            model = RobertaForSequenceClassification.from_pretrained(output_dir)      
         model.to(args.device)
         result = evaluate(args, model, tokenizer,args.eval_data_file)
         logger.info("***** Eval results *****")
@@ -414,10 +401,9 @@ def main():
             
     if args.do_test:
         if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
+            model = RobertaForSequenceClassification.from_pretrained(output_dir)    
         model.to(args.device)
         result = evaluate(args, model, tokenizer,args.test_data_file)
         logger.info("***** Eval results *****")
