@@ -1,15 +1,11 @@
 lang=python
-saved_dir=./saved_models/new_dual_encoder_8/$lang
-output_dir=./saved_models/revised_dual_encoder_12_to_3_rerun/$lang
-cross_output_dir=./saved_models/cross_encoder/$lang
-mkdir -p $output_dir
+code_model_dir=./models/dual_encoder/$lang
+query_model_dir=./models/dual_encoder/$lang
 
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 python run_SPENCER.py \
-    --language $lang \
-    --saved_dir $saved_dir \
-    --output_dir $output_dir \
-    --cross_output_dir $cross_output_dir \
+    --code_model_dir $code_model_dir \
+    --query_model_dir $query_model_dir \
     --model_name_or_path microsoft/codebert-base  \
     --do_eval \
     --train_data_file ../data/dual_encoder/$lang/train.txt \

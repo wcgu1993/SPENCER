@@ -204,33 +204,45 @@ def evaluate(args, model, distillated_model, tokenizer,file_name,eval_when_train
                             'attention_mask': batch[3]}
                 code_outputs = model(code_inputs)
                 summary_outputs = distillated_model(summary_inputs)
-                code_norm = F.normalize(code_outputs, dim = 1)
-                summary_norm = F.normalize(summary_outputs, dim = 1)
-                code_reprs.append(code_norm.cpu())
-                summary_reprs.append(summary_norm.cpu())
+                code_vec = F.normalize(code_outputs, dim = 1)
+                nl_vec = F.normalize(summary_outputs, dim = 1)
+                nl_vecs.append(nl_vec.cpu().numpy()) 
+                code_vecs.append(code_vec.cpu().numpy()) 
                 n_processed += batch[0].size(0)
-        code_reprs, summary_reprs = torch.vstack(code_reprs), torch.vstack(summary_reprs)
-     
-       
-        code_pool, desc_pool = code_reprs, summary_reprs 
-        for i in tqdm(range(n_processed)): # for i in range(pool_size):
-            desc_vec = np.expand_dims(desc_pool[i], axis=0) # [1 x dim] 
-            sims = np.dot(code_pool, desc_vec.T)[:,0] # [pool_size]
-            negsims=np.negative(sims)
-            predict1 = np.argpartition(negsims, kth=0)#predict=np.argsort(negsims)#
-            predict3 = np.argpartition(negsims, kth=4)#predict=np.argsort(negsims)#
-            predict10 = np.argpartition(negsims, kth=9)#predict=np.argsort(negsims)#
-            predict1 = predict1[:1]   
-            predict1 = [int(k) for k in predict1]
-            predict3 = predict5[:3]   
-            predict3 = [int(k) for k in predict3]
-            predict5 = predict5[:5]   
-            predict5 = [int(k) for k in predict5]
-            real = [i]
-            accs1.append(ACC(real,predict1))
-            accs3.append(ACC(real,predict3))
-            accs5.append(ACC(real,predict5))
+
+
+        model.train()    
+        code_vecs = np.concatenate(code_vecs,0)
+        nl_vecs = np.concatenate(nl_vecs,0)
+        num_pool = n_processed // 1000
+        accs1, accs3, accs5, mrrs = [], [], [], []
+        for i in range(num_pool):
+            code_pool = code_vecs[i*1000:(i+1)*1000]
+            for j in range(1000): # for i in range(pool_size):
+                desc_vec = np.expand_dims(nl_vecs[i*1000+j], axis=0) # [1 x dim] 
+                sims = np.dot(code_pool, desc_vec.T)[:,0] # [pool_size]
+                predict = sims.argsort()[::-1]
+                predict1 = predict[:1]   
+                predict1 = [int(k) for k in predict1]
+                predict3 = predict[:3]   
+                predict3 = [int(k) for k in predict3]
+                predict5 = predict[:5]   
+                predict5 = [int(k) for k in predict5]
+                real = [j]
+                accs1.append(ACC(real,predict1))
+                accs3.append(ACC(real,predict3))
+                accs5.append(ACC(real,predict5))
+                index = np.where(predict==j)
+                rank = index[0] + 1
+                mrrs.append(1/rank)
             # ndcgs.append(NDCG(real,predict))                     
+        
+        result = {
+            'eval_acc1': float(np.mean(accs1)),
+            'eval_acc3': float(np.mean(accs3)), 
+            'eval_acc5': float(np.mean(accs5)),
+            "eval_mrr":float(np.mean(mrrs))
+        }                            
         
         
         output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")

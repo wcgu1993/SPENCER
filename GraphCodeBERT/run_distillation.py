@@ -1,24 +1,3 @@
-
-# coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-"""
-Fine-tuning the library models for language modeling on a text file (GPT, GPT-2, BERT, RoBERTa).
-GPT and GPT-2 are fine-tuned using a causal language modeling (CLM) loss while BERT and RoBERTa are fine-tuned
-using a masked language modeling (MLM) loss.
-"""
 import sys 
 import argparse
 import logging
@@ -54,71 +33,79 @@ class InputExample(object):
         """
         self.code = code
         self.nl = nl
-
+       
+            
+        for example in data:
+            self.examples.append(convert_examples_to_features(example,tokenizer,args))
 
 class InputFeatures(object):
     """A single training/test features for a example."""
     def __init__(self,
                  code_tokens,
-                 code_ids,
+                 code_ids,       
                  nl_tokens,
-                 nl_ids,
-
+                 nl_ids
     ):
         self.code_tokens = code_tokens
-        self.code_ids = code_ids
+        self.code_ids = code_ids   
         self.nl_tokens = nl_tokens
         self.nl_ids = nl_ids
 
-
-def convert_examples_to_features(examples,tokenizer,args):
-    """convert examples to token ids"""
-    code_tokens = tokenizer.tokenize(examples.code)[:args.code_length-4]
-    code_tokens =[tokenizer.cls_token,"<encoder-only>",tokenizer.sep_token]+code_tokens+[tokenizer.sep_token]
-    code_ids = tokenizer.convert_tokens_to_ids(code_tokens)
-    padding_length = args.code_length - len(code_ids)
-    code_ids += [tokenizer.pad_token_id]*padding_length
+        
+        
+def convert_examples_to_features(example,tokenizer,args):
     
-    nl_tokens = tokenizer.tokenize(examples.nl)[:args.nl_length-4]
-    nl_tokens = [tokenizer.cls_token,"<encoder-only>",tokenizer.sep_token]+nl_tokens+[tokenizer.sep_token]
-    nl_ids = tokenizer.convert_tokens_to_ids(nl_tokens)
+    code_tokens = tokenizer.tokenize(examples.code)[:args.code_length-2]
+    code_tokens =[tokenizer.cls_token]+code_tokens+[tokenizer.sep_token]
+    code_ids =  tokenizer.convert_tokens_to_ids(code_tokens)
+    padding_length=args.code_length-len(code_ids)
+
+    code_ids+=[tokenizer.pad_token_id]*padding_length    
+    nl_tokens=tokenizer.tokenize(examples.nl)[:args.nl_length-2]
+    nl_tokens =[tokenizer.cls_token]+nl_tokens+[tokenizer.sep_token]
+    nl_ids =  tokenizer.convert_tokens_to_ids(nl_tokens)
     padding_length = args.nl_length - len(nl_ids)
-    nl_ids += [tokenizer.pad_token_id]*padding_length    
+    nl_ids+=[tokenizer.pad_token_id]*padding_length    
     
     return InputFeatures(code_tokens,code_ids,nl_tokens,nl_ids)
 
-
 class TextDataset(Dataset):
-    def __init__(self, tokenizer, args, file_path=None):
-        self.examples = []
-        data = []
-    
-        with open(file_path) as f:
-           for line in f.readlines():
-                line = line.strip().split('<CODESPLIT>')
-                if len(line) != 2:
-                    continue
-                code= line[0]
-                nl = line[1]
-                data.append(InputExample(code=code, nl=nl))
+    def __init__(self, tokenizer, args, file_path=None,pool=None):
+        self.args=args
+        prefix=file_path.split('/')[-1][:-6]
+        cache_file=args.output_dir+'/'+prefix+'.pkl'
+        if os.path.exists(cache_file):
+            self.examples=pickle.load(open(cache_file,'rb'))
+        else:
+            self.examples = []
+            data=[]
+            with open(input_file, "r", encoding='utf-8') as f:
+                for line in f.readlines():
+                    line = line.strip().split('<CODESPLIT>')
+                    if len(line) != 2:
+                        continue
+                    code= line[0]
+                    nl = line[1]
+                    data.append(InputExample(code=code, nl=nl))
+            for example in data:
+                self.examples.append(convert_examples_to_features(example,tokenizer,args))
             
-        for example in data:
-            self.examples.append(convert_examples_to_features(example,tokenizer,args))
-                
-        if "train" in file_path:
+        if 'train' in file_path:
             for idx, example in enumerate(self.examples[:3]):
                 logger.info("*** Example ***")
                 logger.info("idx: {}".format(idx))
                 logger.info("code_tokens: {}".format([x.replace('\u0120','_') for x in example.code_tokens]))
-                logger.info("code_ids: {}".format(' '.join(map(str, example.code_ids))))
+                logger.info("code_ids: {}".format(' '.join(map(str, example.code_ids))))              
                 logger.info("nl_tokens: {}".format([x.replace('\u0120','_') for x in example.nl_tokens]))
-                logger.info("nl_ids: {}".format(' '.join(map(str, example.nl_ids))))                             
-        
+                logger.info("nl_ids: {}".format(' '.join(map(str, example.nl_ids))))          
+                
     def __len__(self):
         return len(self.examples)
 
-    def __getitem__(self, i):   
-        return (torch.tensor(self.examples[i].code_ids),torch.tensor(self.examples[i].nl_ids))
+    def __getitem__(self, item):               
+        
+        return (torch.tensor(self.examples[item].code_ids),
+              torch.tensor(self.examples[item].nl_ids))
             
 
 def set_seed(seed=42):
@@ -186,24 +173,12 @@ def train(args, code_model, query_model, distillated_model, tokenizer):
             
             dual_similarity = torch.einsum("ab,cb->ac",code_outputs,summary_outputs)
 
-            distillated_dual_similarity = torch.einsum("ab,cb->ac",code_outputs,distillated_summary_outputs)
-            distillated_query_similarity = torch.sum(torch.mul(distillated_summary_outputs, summary_outputs), dim=1)
+            distillated_dual_similarity = torch.einsum("ab,cb->ac", code_outputs, distillated_summary_outputs)
+            distillated_query_similarity = torch.sum(torch.mul(summary_outputs, distillated_summary_outputs), dim=1)
             query_similarity = torch.ones_like(distillated_query_similarity)
-
-            distillated_aug_summary_outputs = distillated_model(nl_inputs=nl_inputs)
-
-
-            loss_fct = torch.nn.CrossEntropyLoss(reduction='sum')
             
-            scores = torch.einsum("ab,cb->ac",code_outputs,distillated_summary_outputs)
-            contra_loss = loss_fct(scores*20, torch.arange(code_outputs.size(0), device=scores.device))
-
-            scores = torch.einsum("ab,cb->ac",distillated_summary_outputs,distillated_aug_summary_outputs)
-            summary_contra_loss = loss_fct(scores*20, torch.arange(code_outputs.size(0), device=scores.device))
+            loss = torch.abs(dual_similarity - distillated_dual_similarity).sum() + torch.abs(query_similarity - distillated_query_similarity).sum()
             
-            
-            # loss = torch.abs(dual_similarity - distillated_dual_similarity).sum() + torch.abs(query_similarity - distillated_query_similarity).sum()
-            loss = contra_loss + summary_contra_loss
 
             #report loss
             tr_loss += loss.item()
@@ -232,13 +207,12 @@ def train(args, code_model, query_model, distillated_model, tokenizer):
             logger.info("  Best mrr:%s",round(best_mrr,4))
             logger.info("  "+"*"*20)                          
 
-            checkpoint_prefix = 'checkpoint-best-mrr'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))                        
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)                        
-            model_to_save = distillated_model.module if hasattr(distillated_model,'module') else distillated_model
-            output_dir = os.path.join(output_dir, '{}'.format('model.bin')) 
-            torch.save(model_to_save.state_dict(), output_dir)
+            model_to_save = model.module if hasattr(model,'module') else model
+            model_to_save.save_pretrained(output_dir) 
             logger.info("Saving model checkpoint to %s", output_dir)
 
 
@@ -265,16 +239,17 @@ def evaluate(args, model, distillated_model, tokenizer,file_name,eval_when_train
         with torch.no_grad():
             code_vec = model(code_inputs=code_inputs) 
             nl_vec = distillated_model(nl_inputs=nl_inputs) 
+            code_vec = F.normalize(code_vec, dim = 1)
+            nl_vec = F.normalize(nl_vec, dim = 1)
             nl_vecs.append(nl_vec.cpu().numpy()) 
             code_vecs.append(code_vec.cpu().numpy()) 
-        n_processed += batch[0].size(0)
+            n_processed += batch[0].size(0)
 
-    distillated_model.train()    
+
+    model.train()    
     code_vecs = np.concatenate(code_vecs,0)
     nl_vecs = np.concatenate(nl_vecs,0)
-    
     num_pool = n_processed // 1000
-    # num_pool = 16
     accs1, accs3, accs5, mrrs = [], [], [], []
     for i in range(num_pool):
         code_pool = code_vecs[i*1000:(i+1)*1000]
@@ -295,13 +270,23 @@ def evaluate(args, model, distillated_model, tokenizer,file_name,eval_when_train
             index = np.where(predict==j)
             rank = index[0] + 1
             mrrs.append(1/rank)
-            # ndcgs.append(NDCG(real,predict))                     
         
+    ranks=[]
+    for url, sort_id in zip(nl_urls,sort_ids):
+        rank=0
+        find=False
+        for idx in sort_id[:1000]:
+            if find is False:
+                rank+=1
+            if code_urls[idx]==url:
+                find=True
+        if find:
+            ranks.append(1/rank)
+        else:
+            ranks.append(0)
+    
     result = {
-        'eval_acc1': float(np.mean(accs1)),
-        'eval_acc3': float(np.mean(accs3)), 
-        'eval_acc5': float(np.mean(accs5)),
-        "eval_mrr":float(np.mean(mrrs))
+        "eval_mrr":float(np.mean(ranks))
     }
 
     return result
@@ -314,18 +299,18 @@ def main():
     ## Required parameters
     parser.add_argument("--train_data_file", default=None, type=str, 
                         help="The input training data file (a json file).")
-    parser.add_argument("--language", default=None, type=str, 
-                        help="The input training data file (a json file).")
-    parser.add_argument("--saved_dir", default=None, type=str, required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--output_dir", default=None, type=str, required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--code_model_dir", default=None, type=str, required=True,
+                        help="The directory where the code model is.")
+    parser.add_argument("--query_model_dir", default=None, type=str, required=True,
+                        help="The directory where the query model is.")
+    parser.add_argument("--distillated_model_dir", default=None, type=str, required=True,
+                        help="The directory where the distillated model is.")
+    parser.add_argument("--target_layer_num", default=None, type=int, required=True,
+                        help="Target layer number for model distillation.")
     parser.add_argument("--eval_data_file", default=None, type=str,
                         help="An optional input evaluation data file to evaluate the MRR(a jsonl file).")
     parser.add_argument("--test_data_file", default=None, type=str,
                         help="An optional input test data file to test the MRR(a josnl file).")
-    parser.add_argument("--codebase_file", default=None, type=str,
-                        help="An optional input test data file to codebase (a jsonl file).")  
     
     parser.add_argument("--model_name_or_path", default=None, type=str,
                         help="The model checkpoint for weights initialization.")
@@ -343,8 +328,6 @@ def main():
                         help="Whether to run training.")
     parser.add_argument("--do_eval", action='store_true',
                         help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_test", action='store_true',
-                        help="Whether to run eval on the test set.")  
     parser.add_argument("--do_zero_shot", action='store_true',
                         help="Whether to run eval on the test set.")     
     parser.add_argument("--do_F2_norm", action='store_true',
@@ -381,32 +364,21 @@ def main():
     #build model
     tokenizer = RobertaTokenizer.from_pretrained(args.model_name_or_path)
     config = RobertaConfig.from_pretrained(args.model_name_or_path)
-    code_model = RobertaModel.from_pretrained(args.model_name_or_path) 
-    code_model = Model(code_model)
 
-    checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-    saved_dir = os.path.join(args.saved_dir, '{}'.format(checkpoint_prefix))  
-    model_to_load = code_model.module if hasattr(code_model, 'module') else code_model  
-    model_to_load.load_state_dict(torch.load(saved_dir))      
+    checkpoint_prefix = 'checkpoint-best'
+    code_model_dir = os.path.join(args.code_model_dir, '{}'.format(checkpoint_prefix))  
+    code_model = RobertaModel.from_pretrained(code_model_dir) 
     code_model.to(args.device)
 
-    config.num_hidden_layers = 12
-    query_model = RobertaModel.from_pretrained(args.model_name_or_path, config = config) 
-    query_model = Model(query_model)
-
-    checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-    saved_dir = os.path.join('./saved_models/dual_encoder', '{}'.format(args.language))  
-    saved_dir = os.path.join(saved_dir, '{}'.format(checkpoint_prefix))  
-    query_model_to_load = query_model.module if hasattr(query_model, 'module') else query_model  
-    query_model_to_load.load_state_dict(torch.load(saved_dir))      
+    
+    query_model_dir = os.path.join(query_model_dir, '{}'.format(checkpoint_prefix))  
+    query_model = RobertaModel.from_pretrained(query_model_dir)
     query_model.to(args.device)
 
-    new_config = RobertaConfig.from_pretrained(args.model_name_or_path)
-    new_config.num_hidden_layers = 3
-    distillated_model = RobertaModel.from_pretrained(args.model_name_or_path, config = new_config) 
+    distillated_model_config = RobertaConfig.from_pretrained(args.model_name_or_path)
+    distillated_model_config.num_hidden_layers = args.target_layer_num
+    distillated_model = RobertaModel.from_pretrained(args.model_name_or_path, config = distillated_model_config) 
  
-    
-    distillated_model = Model(distillated_model)
     logger.info("Training/evaluation parameters %s", args)
     
     distillated_model.to(args.device)
@@ -421,30 +393,22 @@ def main():
     results = {}
     if args.do_eval:
         if args.do_zero_shot is False:
-            distillated_config = RobertaConfig.from_pretrained(args.model_name_or_path)
-            distillated_config.num_hidden_layers = 6
-            distillated_model = RobertaModel.from_pretrained(args.model_name_or_path, config = distillated_config)
-            distillated_model = Model(distillated_model)
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-            saved_dir = os.path.join('./saved_models/dual_encoder_12_to_6_layer', '{}'.format(args.language))  
-            saved_dir = os.path.join(saved_dir, '{}'.format(checkpoint_prefix))  
-            distillated_model_to_load = distillated_model.module if hasattr(distillated_model, 'module') else distillated_model  
-            distillated_model_to_load.load_state_dict(torch.load(saved_dir))      
-            distillated_model.to(args.device)
-
-        result = evaluate(args, code_model, distillated_model, tokenizer,args.eval_data_file)
+            checkpoint_prefix = 'checkpoint-best'
+            distillated_model_dir = os.path.join(args.distillated_model_dir, '{}'.format(checkpoint_prefix))  
+            distillated_model = RobertaModel.from_pretrained(distillated_model_dir) 
+        distillated_model.to(args.device)
+        result = evaluate(args, code_model, distillated_model, tokenizer, args.eval_data_file)
         logger.info("***** Eval results *****")
         for key in sorted(result.keys()):
             logger.info("  %s = %s", key, str(round(result[key],3)))
-            
+
     if args.do_test:
         if args.do_zero_shot is False:
-            checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
-            output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-            model_to_load = model.module if hasattr(model, 'module') else model  
-            model_to_load.load_state_dict(torch.load(output_dir))      
-        model.to(args.device)
-        result = evaluate(args, model, tokenizer,args.test_data_file)
+            checkpoint_prefix = 'checkpoint-best'
+            distillated_model_dir = os.path.join(args.distillated_model_dir, '{}'.format(checkpoint_prefix))  
+            distillated_model = RobertaModel.from_pretrained(distillated_model_dir) 
+        distillated_model.to(args.device)
+        result = evaluate(args, code_model, distillated_model, tokenizer, args.test_data_file)
         logger.info("***** Eval results *****")
         for key in sorted(result.keys()):
             logger.info("  %s = %s", key, str(round(result[key],3)))
