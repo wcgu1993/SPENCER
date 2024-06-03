@@ -1,7 +1,7 @@
 lang=java
-code_model_dir=./saved_models/dual_encoder/$lang
-query_model_dir=./saved_models/dual_encoder/$lang
-distllated_model_dir=./saved_models/dual_encoder_12_to_3_layer/$lang
+code_model_dir=./models/dual_encoder/$lang
+query_model_dir=./models/dual_encoder/$lang
+distllated_model_dir=./models/dual_encoder_12_to_3_layer/$lang
 target_layer_num=3
 
 CUDA_VISIBLE_DEVICES=1 python run_distillation.py \

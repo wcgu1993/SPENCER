@@ -1,6 +1,6 @@
 lang=python
-code_model_dir=./saved_models/dual_encoder/$lang
-query_model_dir=./saved_models/dual_encoder/$lang
+code_model_dir=./models/dual_encoder/$lang
+query_model_dir=./models/dual_encoder/$lang
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 python run_SPENCER.py \
     --code_model_dir $code_model_dir \

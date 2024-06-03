@@ -381,8 +381,6 @@ def main():
     distillated_model_config.num_hidden_layers = args.target_layer_num
     distillated_model = RobertaModel.from_pretrained(args.model_name_or_path, config = distillated_model_config) 
  
-    
-    distillated_model = Model(distillated_model)
     logger.info("Training/evaluation parameters %s", args)
     
     distillated_model.to(args.device)

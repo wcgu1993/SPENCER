@@ -1,5 +1,5 @@
 lang=python
-output_dir=./saved_models/dual_encoder/$lang
+output_dir=./models/dual_encoder/$lang
 mkdir -p $output_dir
 
 

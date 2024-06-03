@@ -10,7 +10,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python run_SPENCER.py \
     --saved_dir $saved_dir \
     --output_dir $output_dir \
     --cross_output_dir $cross_output_dir \
-    --model_name_or_path microsoft/unixcoder-base  \
+    --model_name_or_path microsoft/codebert-base  \
     --do_eval \
     --train_data_file ../data/dual_encoder/$lang/train.txt \
     --eval_data_file ../data/dual_encoder/$lang/test.txt \

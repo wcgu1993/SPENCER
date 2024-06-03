@@ -1,19 +1,25 @@
 lang=java
-output_dir=./saved_models/cross_encoder/$lang
-mkdir -p $output_dir
+pretrained_model=microsoft/codebert-base  #Roberta: roberta-base
+output_dir=./models/cross_encoder/$lang
 
-
-CUDA_VISIBLE_DEVICES=0,1 python3 run_cross_encoder.py \
-    --output_dir $output_dir \
-    --model_name_or_path microsoft/codebert-base  \
+CUDA_VISIBLE_DEVICES=0,1 python run_cross_encoder.py \
+    --model_type roberta \
+    --task_name codesearch \
     --do_train \
-    --data_dir ../data/cross_encoder/$lang \
-    --train_data_file ../data/cross_encoder/$lang/train.txt \
-    --eval_data_file ../data/cross_encoder/$lang/valid.txt \
+    --do_eval \
+    --eval_all_checkpoints \
+-   -train_file train.txt \
+    --dev_file valid.txt \
     --num_train_epochs 10 \
-    --code_length 150 \
-    --nl_length 50 \
-    --train_batch_size 32 \
-    --eval_batch_size 32 \
-    --learning_rate 2e-5 \
+    --max_seq_length 200 \
+    --per_gpu_train_batch_size 32 \
+    --per_gpu_eval_batch_size 32 \
+    --gradient_accumulation_steps 1 \
+    --overwrite_output_dir \
+    --data_dir ../data/cross_encoder/$lang \
+    --output_dir $output_dir  \
+    --model_name_or_path $pretrained_model \
+    --learning_rate 1e-5 \
     --seed 123456 2>&1 | tee $output_dir/train.log
+
+

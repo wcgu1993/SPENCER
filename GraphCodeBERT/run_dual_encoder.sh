@@ -5,7 +5,7 @@ mkdir -p $output_dir
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 python run_dual_encoder.py \
     --output_dir $output_dir \
-    --model_name_or_path microsoft/unixcoder-base  \
+    --model_name_or_path microsoft/graphcodebert-base  \
     --do_eval \
     --train_data_file ../data/dual_encoder/$lang/train.txt \
     --eval_data_file ../data/dual_encoder/$lang/test.txt \

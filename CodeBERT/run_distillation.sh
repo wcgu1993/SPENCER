@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=1 python run_distillation.py \
     --language $lang \
     --saved_dir $saved_dir \
     --output_dir $output_dir \
-    --model_name_or_path microsoft/unixcoder-base  \
+    --model_name_or_path microsoft/codebert-base  \
     --do_train \
     --train_data_file ../data/dual_encoder/$lang/train.txt \
     --eval_data_file ../data/dual_encoder/$lang/test.txt \

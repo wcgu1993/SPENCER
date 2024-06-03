@@ -5,7 +5,7 @@ output_dir=./saved_models/cross_encoder/$lang
 
 CUDA_VISIBLE_DEVICES=1 python3 run_cross_encoder.py \
     --output_dir $output_dir \
-    --model_name_or_path microsoft/unixcoder-base  \
+    --model_name_or_path microsoft/graphcodebert-base  \
     --data_dir ../data/cross_encoder/$lang \
     --do_test \
     --eval_data_file ../data/dual_encoder/$lang/valid.txt \

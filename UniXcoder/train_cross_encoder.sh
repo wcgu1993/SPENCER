@@ -1,5 +1,5 @@
 lang=java
-output_dir=./saved_models/cross_encoder/$lang
+output_dir=./models/cross_encoder/$lang
 mkdir -p $output_dir
 
 
