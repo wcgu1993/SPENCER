@@ -10,7 +10,7 @@ CUDA_VISIBLE_DEVICES=1 python3 run_cross_encoder.py \
     --do_test \
     --eval_data_file ../data/dual_encoder/$lang/valid.txt \
     --num_train_epochs 10 \
-    --code_length 256 \
+    --code_length 128 \
     --nl_length 128 \
     --train_batch_size 32 \
     --eval_batch_size 32 \

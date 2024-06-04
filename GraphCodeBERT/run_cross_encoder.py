@@ -1,4 +1,3 @@
-
 import argparse
 import logging
 import os
@@ -19,136 +18,52 @@ from tqdm import tqdm, trange
 import multiprocessing
 cpu_cont = 16
 
-from parser import DFG_python,DFG_java,DFG_ruby,DFG_go,DFG_php,DFG_javascript
-from parser import (remove_comments_and_docstrings,
-                   tree_to_token_index,
-                   index_to_code_token,
-                   tree_to_variable_index)
-from tree_sitter import Language, Parser
-dfg_function={
-    'python':DFG_python,
-    'java':DFG_java,
-    'ruby':DFG_ruby,
-    'go':DFG_go,
-    'php':DFG_php,
-    'javascript':DFG_javascript
-}
+class InputExample(object):
+    """A single training/test example for simple sequence classification."""
 
-#load parsers
-parsers={}        
-for lang in dfg_function:
-    LANGUAGE = Language('parser/my-languages.so', lang)
-    parser = Parser()
-    parser.set_language(LANGUAGE) 
-    parser = [parser,dfg_function[lang]]    
-    parsers[lang]= parser
-    
-    
-#remove comments, tokenize code and extract dataflow                                        
-def extract_dataflow(code, parser,lang):
-    #remove comments
-    try:
-        code=remove_comments_and_docstrings(code,lang)
-    except:
-        pass    
-    #obtain dataflow
-    if lang=="php":
-        code="<?php"+code+"?>"    
-    try:
-        tree = parser[0].parse(bytes(code,'utf8'))    
-        root_node = tree.root_node  
-        tokens_index=tree_to_token_index(root_node)     
-        code=code.split('\n')
-        code_tokens=[index_to_code_token(x,code) for x in tokens_index]  
-        index_to_code={}
-        for idx,(index,code) in enumerate(zip(tokens_index,code_tokens)):
-            index_to_code[index]=(idx,code)  
-        try:
-            DFG,_=parser[1](root_node,index_to_code,{}) 
-        except:
-            DFG=[]
-        DFG=sorted(DFG,key=lambda x:x[1])
-        indexs=set()
-        for d in DFG:
-            if len(d[-1])!=0:
-                indexs.add(d[1])
-            for x in d[-1]:
-                indexs.add(x)
-        new_DFG=[]
-        for d in DFG:
-            if d[1] in indexs:
-                new_DFG.append(d)
-        dfg=new_DFG
-    except:
-        dfg=[]
-    return code_tokens,dfg
+    def __init__(self, code, nl):
+        """Constructs a InputExample.
+
+        Args:
+            guid: Unique id for the example.
+            text_a: string. The untokenized text of the first sequence. For single
+            sequence tasks, only this sequence must be specified.
+            text_b: (Optional) string. The untokenized text of the second sequence.
+            Only must be specified for sequence pair tasks.
+            label: (Optional) string. The label of the example. This should be
+            specified for train and dev examples, but not for test examples.
+        """
+        self.code = code
+        self.nl = nl
+       
+            
+        for example in data:
+            self.examples.append(convert_examples_to_features(example,tokenizer,args))
 
 class InputFeatures(object):
     """A single training/test features for a example."""
     def __init__(self,
-                 code_tokens,
-                 code_ids,
-                 position_idx,
-                 dfg_to_code,
-                 dfg_to_dfg,                 
-                 nl_tokens,
-                 nl_ids,
-                 url,
-
+                 tokens,
+                 ids,       
+                 label
     ):
-        self.code_tokens = code_tokens
-        self.code_ids = code_ids
-        self.position_idx=position_idx
-        self.dfg_to_code=dfg_to_code
-        self.dfg_to_dfg=dfg_to_dfg        
-        self.nl_tokens = nl_tokens
-        self.nl_ids = nl_ids
-        self.url=url
-        
-        
-def convert_examples_to_features(item):
-    js,tokenizer,args=item
-    #code
-    parser=parsers[args.lang]
-    #extract data flow
-    code_tokens,dfg=extract_dataflow(js['original_string'],parser,args.lang)
-    code_tokens=[tokenizer.tokenize('@ '+x)[1:] if idx!=0 else tokenizer.tokenize(x) for idx,x in enumerate(code_tokens)]
-    ori2cur_pos={}
-    ori2cur_pos[-1]=(0,0)
-    for i in range(len(code_tokens)):
-        ori2cur_pos[i]=(ori2cur_pos[i-1][1],ori2cur_pos[i-1][1]+len(code_tokens[i]))    
-    code_tokens=[y for x in code_tokens for y in x]  
-    #truncating
-    code_tokens=code_tokens[:args.code_length+args.data_flow_length-2-min(len(dfg),args.data_flow_length)]
-    code_tokens =[tokenizer.cls_token]+code_tokens+[tokenizer.sep_token]
-    code_ids =  tokenizer.convert_tokens_to_ids(code_tokens)
-    position_idx = [i+tokenizer.pad_token_id + 1 for i in range(len(code_tokens))]
-    dfg=dfg[:args.code_length+args.data_flow_length-len(code_tokens)]
-    code_tokens+=[x[0] for x in dfg]
-    position_idx+=[0 for x in dfg]
-    code_ids+=[tokenizer.unk_token_id for x in dfg]
-    padding_length=args.code_length+args.data_flow_length-len(code_ids)
-    position_idx+=[tokenizer.pad_token_id]*padding_length
-    code_ids+=[tokenizer.pad_token_id]*padding_length    
-    #reindex
-    reverse_index={}
-    for idx,x in enumerate(dfg):
-        reverse_index[x[1]]=idx
-    for idx,x in enumerate(dfg):
-        dfg[idx]=x[:-1]+([reverse_index[i] for i in x[-1] if i in reverse_index],)    
-    dfg_to_dfg=[x[-1] for x in dfg]
-    dfg_to_code=[ori2cur_pos[x[1]] for x in dfg]
-    length=len([tokenizer.cls_token])
-    dfg_to_code=[(x[0]+length,x[1]+length) for x in dfg_to_code]        
-    #nl
-    nl=' '.join(js['docstring_tokens'])
-    nl_tokens=tokenizer.tokenize(nl)[:args.nl_length-2]
-    nl_tokens =[tokenizer.cls_token]+nl_tokens+[tokenizer.sep_token]
-    nl_ids =  tokenizer.convert_tokens_to_ids(nl_tokens)
-    padding_length = args.nl_length - len(nl_ids)
-    nl_ids+=[tokenizer.pad_token_id]*padding_length    
+        self.tokens = tokens
+        self.ids = ids   
+        self.label = label
+              
+def convert_examples_to_features(example,tokenizer,args):
     
-    return InputFeatures(code_tokens,code_ids,position_idx,dfg_to_code,dfg_to_dfg,nl_tokens,nl_ids,js['url'])
+    code_tokens = tokenizer.tokenize(examples.code)[:args.code_length-2]
+    nl_tokens=tokenizer.tokenize(examples.nl)[:args.nl_length-2]
+    tokens =[tokenizer.cls_token]+nl_tokens+[tokenizer.sep_token]code_tokens+[tokenizer.sep_token]
+    ids =  tokenizer.convert_tokens_to_ids(tokens)
+    padding_length = args.nl_length + args.code_length - len(ids)
+
+    ids+=[tokenizer.pad_token_id]*padding_length     
+
+    label = example.label
+    
+    return InputFeatures(tokens, ids, label)
 
 class TextDataset(Dataset):
     def __init__(self, tokenizer, args, file_path=None,pool=None):
@@ -160,57 +75,32 @@ class TextDataset(Dataset):
         else:
             self.examples = []
             data=[]
-            with open(file_path) as f:
-                for line in f:
-                    line=line.strip()
-                    js=json.loads(line)
-                    data.append((js,tokenizer,args))
-            self.examples=pool.map(convert_examples_to_features, tqdm(data,total=len(data)))
-            pickle.dump(self.examples,open(cache_file,'wb'))
+            with open(input_file, "r", encoding='utf-8') as f:
+                for line in f.readlines():
+                    line = line.strip().split('<CODESPLIT>')
+                    if len(line) != 2:
+                        continue
+                    code= line[0]
+                    nl = line[1]
+                    data.append(InputExample(code=code, nl=nl))
+            for example in data:
+                self.examples.append(convert_examples_to_features(example,tokenizer,args))
             
         if 'train' in file_path:
             for idx, example in enumerate(self.examples[:3]):
                 logger.info("*** Example ***")
                 logger.info("idx: {}".format(idx))
-                logger.info("code_tokens: {}".format([x.replace('\u0120','_') for x in example.code_tokens]))
-                logger.info("code_ids: {}".format(' '.join(map(str, example.code_ids))))
-                logger.info("position_idx: {}".format(example.position_idx))
-                logger.info("dfg_to_code: {}".format(' '.join(map(str, example.dfg_to_code))))
-                logger.info("dfg_to_dfg: {}".format(' '.join(map(str, example.dfg_to_dfg))))                
-                logger.info("nl_tokens: {}".format([x.replace('\u0120','_') for x in example.nl_tokens]))
-                logger.info("nl_ids: {}".format(' '.join(map(str, example.nl_ids))))          
+                logger.info("tokens: {}".format([x.replace('\u0120','_') for x in example.tokens]))
+                logger.info("ids: {}".format(' '.join(map(str, example.ids))))              
+                logger.info("label: {}".format([x.replace('\u0120','_') for x in example.label]))         
                 
     def __len__(self):
         return len(self.examples)
 
-    def __getitem__(self, item): 
-        #calculate graph-guided masked function
-        attn_mask=np.zeros((self.args.code_length+self.args.data_flow_length,
-                            self.args.code_length+self.args.data_flow_length),dtype=np.bool)
-        #calculate begin index of node and max length of input
-        node_index=sum([i>1 for i in self.examples[item].position_idx])
-        max_length=sum([i!=1 for i in self.examples[item].position_idx])
-        #sequence can attend to sequence
-        attn_mask[:node_index,:node_index]=True
-        #special tokens attend to all tokens
-        for idx,i in enumerate(self.examples[item].code_ids):
-            if i in [0,2]:
-                attn_mask[idx,:max_length]=True
-        #nodes attend to code tokens that are identified from
-        for idx,(a,b) in enumerate(self.examples[item].dfg_to_code):
-            if a<node_index and b<node_index:
-                attn_mask[idx+node_index,a:b]=True
-                attn_mask[a:b,idx+node_index]=True
-        #nodes attend to adjacent nodes 
-        for idx,nodes in enumerate(self.examples[item].dfg_to_dfg):
-            for a in nodes:
-                if a+node_index<len(self.examples[item].position_idx):
-                    attn_mask[idx+node_index,a+node_index]=True  
-                    
-        return (torch.tensor(self.examples[item].code_ids),
-              torch.tensor(attn_mask),
-              torch.tensor(self.examples[item].position_idx), 
-              torch.tensor(self.examples[item].nl_ids))
+    def __getitem__(self, item):               
+        
+        return (torch.tensor(self.examples[item].ids),
+              torch.tensor(self.examples[item].label))
             
 
 def set_seed(seed=42):
@@ -252,19 +142,11 @@ def train(args, model, tokenizer,pool):
     tr_num,tr_loss,best_mrr=0,0,0 
     for idx in range(args.num_train_epochs): 
         for step,batch in enumerate(train_dataloader):
-            #get inputs
-            code_inputs = batch[0].to(args.device)  
-            attn_mask = batch[1].to(args.device)
-            position_idx = batch[2].to(args.device)
-            nl_inputs = batch[3].to(args.device)
-            #get code and nl vectors
-            code_vec = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
-            nl_vec = model(nl_inputs=nl_inputs)
-            
-            #calculate scores and loss
-            scores=torch.einsum("ab,cb->ac",nl_vec,code_vec)
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(scores, torch.arange(code_inputs.size(0), device=scores.device))
+            batch = tuple(t.to(args.device) for t in batch)
+            inputs = {'input_ids': batch[0],
+                      'labels': batch[1]}
+            ouputs = model(**inputs)
+            loss = ouputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
             
             #report loss
             tr_loss += loss.item()
@@ -287,30 +169,26 @@ def train(args, model, tokenizer,pool):
             logger.info("  %s = %s", key, round(value,4))    
             
         #save best model
-        if results['eval_mrr']>best_mrr:
-            best_mrr=results['eval_mrr']
+        if results['eval_acc']>best_acc:
+            best_acc=results['eval_acc]
             logger.info("  "+"*"*20)  
-            logger.info("  Best mrr:%s",round(best_mrr,4))
+            logger.info("  Best mrr:%s",round(best_acc,4))
             logger.info("  "+"*"*20)                          
 
-            checkpoint_prefix = 'checkpoint-best-mrr'
+            checkpoint_prefix = 'checkpoint-best'
             output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))                        
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)                        
             model_to_save = model.module if hasattr(model,'module') else model
-            output_dir = os.path.join(output_dir, '{}'.format('model.bin')) 
-            torch.save(model_to_save.state_dict(), output_dir)
+            model_to_save.save_pretrained(model_to_save) 
             logger.info("Saving model checkpoint to %s", output_dir)
 
 
 def evaluate(args, model, tokenizer,file_name,pool, eval_when_training=False):
-    query_dataset = TextDataset(tokenizer, args, file_name, pool)
-    query_sampler = SequentialSampler(query_dataset)
-    query_dataloader = DataLoader(query_dataset, sampler=query_sampler, batch_size=args.eval_batch_size,num_workers=4)
-    
-    code_dataset = TextDataset(tokenizer, args, args.codebase_file, pool)
-    code_sampler = SequentialSampler(code_dataset)
-    code_dataloader = DataLoader(code_dataset, sampler=code_sampler, batch_size=args.eval_batch_size,num_workers=4)    
+ 
+    test_dataset = TextDataset(tokenizer, args, file_name, pool)
+    test_sampler = SequentialSampler(test_dataset)
+    test_dataloader = DataLoader(test_dataset, sampler=test_sampler, batch_size=args.eval_batch_size,num_workers=4)
 
     # multi-gpu evaluate
     if args.n_gpu > 1 and eval_when_training is False:
@@ -324,56 +202,58 @@ def evaluate(args, model, tokenizer,file_name,pool, eval_when_training=False):
 
     
     model.eval()
-    code_vecs=[] 
-    nl_vecs=[]
-    for batch in query_dataloader:  
-        nl_inputs = batch[3].to(args.device)
+    eval_loss = 0.0
+    nb_eval_steps = 0
+    preds = None
+    out_label_ids = None
+    for batch in test_dataloader:  
         with torch.no_grad():
-            nl_vec = model(nl_inputs=nl_inputs) 
-            nl_vecs.append(nl_vec.cpu().numpy()) 
+            inputs = {'input_ids': batch[0],
+                        'labels': batch[1]}
 
-    for batch in code_dataloader:
-        code_inputs = batch[0].to(args.device)    
-        attn_mask = batch[1].to(args.device)
-        position_idx =batch[2].to(args.device)
-        with torch.no_grad():
-            code_vec= model(code_inputs=code_inputs, attn_mask=attn_mask,position_idx=position_idx)
-            code_vecs.append(code_vec.cpu().numpy())  
-    model.train()    
-    code_vecs=np.concatenate(code_vecs,0)
-    nl_vecs=np.concatenate(nl_vecs,0)
+            outputs = model(**inputs)
+            tmp_eval_loss, logits = outputs[:2]
 
-    scores=np.matmul(nl_vecs,code_vecs.T)
-    
-    sort_ids=np.argsort(scores, axis=-1, kind='quicksort', order=None)[:,::-1]    
-    
-    nl_urls=[]
-    code_urls=[]
-    for example in query_dataset.examples:
-        nl_urls.append(example.url)
-        
-    for example in code_dataset.examples:
-        code_urls.append(example.url)
-        
-    ranks=[]
-    for url, sort_id in zip(nl_urls,sort_ids):
-        rank=0
-        find=False
-        for idx in sort_id[:1000]:
-            if find is False:
-                rank+=1
-            if code_urls[idx]==url:
-                find=True
-        if find:
-            ranks.append(1/rank)
+        eval_loss += tmp_eval_loss.mean().item()
+        nb_eval_steps += 1
+        if preds is None:
+            preds = logits.detach().cpu().numpy()
+            out_label_ids = inputs['labels'].detach().cpu().numpy()
         else:
-            ranks.append(0)
-    
-    result = {
-        "eval_mrr":float(np.mean(ranks))
-    }
+            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
 
-    return result
+            out_label_ids = np.append(out_label_ids, inputs['labels'].detach().cpu().numpy(), axis=0)
+    # eval_accuracy = accuracy(preds,out_label_ids)
+    eval_loss = eval_loss / nb_eval_steps
+
+    preds_label = np.argmax(preds, axis=1)
+    result = compute_metrics(eval_task, preds_label, out_label_ids)
+    results.update(result)
+    if (mode == 'dev'):
+        output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+        with open(output_eval_file, "a+") as writer:
+            logger.info("***** Eval results {} *****".format(prefix))
+            writer.write('evaluate %s\n' % checkpoint)
+            for key in sorted(result.keys()):
+                logger.info("  %s = %s", key, str(result[key]))
+                writer.write("%s = %s\n" % (key, str(result[key])))
+    elif (mode == 'test'):
+        output_test_file = args.test_result_dir
+        output_dir = os.path.dirname(output_test_file)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        with open(output_test_file, "w") as writer:
+            logger.info("***** Output test results *****")
+            all_logits = preds.tolist()
+            for i, logit in tqdm(enumerate(all_logits), desc='Testing'):
+                instance_rep = '<CODESPLIT>'.join(
+                    [item.encode('ascii', 'ignore').decode('ascii') for item in instances[i]])
+
+                writer.write(instance_rep + '<CODESPLIT>' + '<CODESPLIT>'.join([str(l) for l in logit]) + '\n')
+            for key in sorted(result.keys()):
+                print("%s = %s" % (key, str(result[key])))
+
+    return results
 
                         
                         
@@ -463,9 +343,9 @@ def main():
     # Evaluation
     results = {}
     if args.do_eval:
-        checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
+        checkpoint_prefix = 'checkpoint-best'
         output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-        model.load_state_dict(torch.load(output_dir),strict=False)      
+        model.from_pretrained(output_dir)    
         model.to(args.device)
         result=evaluate(args, model, tokenizer,args.eval_data_file, pool)
         logger.info("***** Eval results *****")
@@ -473,9 +353,9 @@ def main():
             logger.info("  %s = %s", key, str(round(result[key],4)))
             
     if args.do_test:
-        checkpoint_prefix = 'checkpoint-best-mrr/model.bin'
+        checkpoint_prefix = 'checkpoint-best'
         output_dir = os.path.join(args.output_dir, '{}'.format(checkpoint_prefix))  
-        model.load_state_dict(torch.load(output_dir),strict=False)      
+        model.from_pretrained(output_dir)      
         model.to(args.device)
         result=evaluate(args, model, tokenizer,args.test_data_file, pool)
         logger.info("***** Eval results *****")

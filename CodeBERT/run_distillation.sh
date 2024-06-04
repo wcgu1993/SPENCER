@@ -1,13 +1,15 @@
 lang=java
-saved_dir=./saved_models/dual_encoder/$lang
-output_dir=./saved_models/dual_encoder_12_to_3_layer_direct/$lang
-mkdir -p $output_dir
-
+code_model_dir=./models/dual_encoder/$lang
+query_model_dir=./models/dual_encoder/$lang
+distllated_model_dir=./models/dual_encoder_12_to_3_layer/$lang
+target_layer_num=3
 
 CUDA_VISIBLE_DEVICES=1 python run_distillation.py \
     --language $lang \
-    --saved_dir $saved_dir \
-    --output_dir $output_dir \
+    --code_model_dir $code_model_dir \
+    --query_model_dir $query_model_dir \
+    --distllated_model_dir $distllated_model_dir \
+    --target_layer_num $target_layer_num \
     --model_name_or_path microsoft/codebert-base  \
     --do_train \
     --train_data_file ../data/dual_encoder/$lang/train.txt \
