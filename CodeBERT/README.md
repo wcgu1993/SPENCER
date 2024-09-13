@@ -1,4 +1,6 @@
-# SPENCER Training and Evaluation
+# SPENCER Training and Evaluation with CodeBERT
+
+The SPENCER training consists of three steps: dual-encoder training, cross-encoder training, and dual-encoder distillation. The dual-encoder distillation begins only after the completion of the dual-encoder training.
 
 ## Cross Encoder Training
 
