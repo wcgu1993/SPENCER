@@ -22,12 +22,8 @@ python process_data.py
 
 ## Run SPENCER
 
-The implementation supports four pre-trained models: CodeBERT, GraphCodeBERT, CodeT5, and Unixcoder. Please navigate to the appropriate folder to select the base model you wish to use. Detailed instructions for running each specific pre-trained model with SPENCER can be found in the corresponding folder.
-
-If you want to select CodeBERT as base model, please refer to the [CodeBERT](https://github.com/wcgu1993/SPENCER/tree/main/CodeBERT) folder.
-
-If you want to select GraphCodeBERT as base model, please refer to the [GraphCodeBERT](https://github.com/wcgu1993/SPENCER/tree/main/GraphCodeBERT) folder.
-
-If you want to select CodeT5 as base model, please refer to the [CodeT5](https://github.com/wcgu1993/SPENCER/tree/main/CodeT5) folder.
-
-If you want to select UniXcoder as base model, please refer to the [UniXcoder](https://github.com/wcgu1993/SPENCER/tree/main/UniXcoder) folder.
+The implementation supports four pre-trained models: CodeBERT, GraphCodeBERT, CodeT5, and UniXcoder. To select the base model, navigate to the corresponding folder for detailed instructions on running the model with SPENCER.
+-For CodeBERT,, please refer to the [CodeBERT](https://github.com/wcgu1993/SPENCER/tree/main/CodeBERT) folder.
+-For GraphCodeBERT, please refer to the [GraphCodeBERT](https://github.com/wcgu1993/SPENCER/tree/main/GraphCodeBERT) folder.
+-For CodeT5, please refer to the [CodeT5](https://github.com/wcgu1993/SPENCER/tree/main/CodeT5) folder.
+-For UniXcoder, please refer to the [UniXcoder](https://github.com/wcgu1993/SPENCER/tree/main/UniXcoder) folder.
