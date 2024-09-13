@@ -15,4 +15,6 @@ rm  data.zip
 python process_data.py
 ```
 
+## Run SPENCER
 
+The implementation supports four pre-trained models: CodeBERT, GraphCodeBERT, CodeT5, and Unixcoder. Please navigate to the appropriate folder to select the base model you wish to use. Detailed instructions for running each specific pre-trained model with SPENCER can be found in the corresponding folder.
