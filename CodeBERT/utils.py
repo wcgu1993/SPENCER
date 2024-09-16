@@ -73,45 +73,28 @@ class DataProcessor(object):
 class CodesearchProcessor(DataProcessor):
     """Processor for the MRPC data set (GLUE version)."""
 
-    def get_train_examples(self, data_dir, train_file):
+    def get_examples(self, data_dir, file):
         """See base class."""
-        logger.info("LOOKING AT {}".format(os.path.join(data_dir, train_file)))
+        logger.info("LOOKING AT {}".format(os.path.join(data_dir, file)))
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, train_file)), "train")
+            self._read_tsv(os.path.join(data_dir, file)))
 
-    def get_dev_examples(self, data_dir, dev_file):
-        """See base class."""
-        logger.info("LOOKING AT {}".format(os.path.join(data_dir, dev_file)))
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, dev_file)), "dev")
-
-    def get_test_examples(self, data_dir, test_file):
-        """See base class."""
-        logger.info("LOOKING AT {}".format(os.path.join(data_dir, test_file)))
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, test_file)), "test")
 
     def get_labels(self):
         """See base class."""
         return ["0", "1"]
 
-    def _create_examples(self, lines, set_type):
+    def _create_examples(self, lines,):
         """Creates examples for the training and dev sets."""
         examples = []
         for (i, line) in enumerate(lines):
-            guid = "%s-%s" % (set_type, i)
+            guid = "%s" % (i)
             text_a = line[3]
             text_b = line[4]
-            if (set_type == 'test'):
-                label = self.get_labels()[0]
-            else:
-                label = line[0]
+            label = line[0]
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-        if (set_type == 'test'):
-            return examples, lines
-        else:
-            return examples
+        return examples
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length,

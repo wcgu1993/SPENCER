@@ -116,7 +116,7 @@ def train(args, train_dataset, model, tokenizer, optimizer):
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
                     if args.local_rank == -1 and args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
-                        results = evaluate(args, model, tokenizer, checkpoint=str(global_step))
+                        results = evaluate(args, model, tokenizer, args.dev_file, mode='dev')
                         for key, value in results.items():
                             tb_writer.add_scalar('eval_{}'.format(key), value, global_step)
                             logger.info('loss %s', str(tr_loss - logging_loss))
@@ -128,7 +128,7 @@ def train(args, train_dataset, model, tokenizer, optimizer):
                 break
 
         if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-            results = evaluate(args, model, tokenizer, checkpoint=str(args.start_epoch + idx))
+            results = evaluate(args, model, tokenizer, args.dev_file, mode='dev')
 
             last_output_dir = os.path.join(args.output_dir, 'checkpoint-last')
             if not os.path.exists(last_output_dir):
@@ -179,20 +179,21 @@ def accuracy(out, labels):
     return np.sum(outputs == labels)
 
 
-def evaluate(args, model, tokenizer, checkpoint=None, prefix="", mode='dev'):
+def evaluate(args, model, tokenizer, data_file, checkpoint=None, prefix="", mode='dev', output=''):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
     eval_task_names = (args.task_name,)
     eval_outputs_dirs = (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        if (mode == 'dev'):
-            eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, ttype='dev')
-        elif (mode == 'test'):
-            eval_dataset, instances = load_and_cache_examples(args, eval_task, tokenizer, ttype='test')
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
+        if mode == 'dev':
+            eval_dataset = load_and_cache_examples(args, args.data_dir, eval_task, tokenizer, data_file)
+        elif mode == 'test':
+            data_dir = os.path.join(args.data_dir, 'test')
+            eval_dataset = load_and_cache_examples(args, data_dir, eval_task, tokenizer, data_file)
 
         args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
         # Note that DistributedSampler samples randomly
@@ -207,8 +208,8 @@ def evaluate(args, model, tokenizer, checkpoint=None, prefix="", mode='dev'):
         nb_eval_steps = 0
         preds = None
         out_label_ids = None
+        model.eval()
         for batch in tqdm(eval_dataloader, desc="Evaluating"):
-            model.eval()
             batch = tuple(t.to(args.device) for t in batch)
 
             with torch.no_grad():
@@ -231,6 +232,7 @@ def evaluate(args, model, tokenizer, checkpoint=None, prefix="", mode='dev'):
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
 
                 out_label_ids = np.append(out_label_ids, inputs['labels'].detach().cpu().numpy(), axis=0)
+                
         # eval_accuracy = accuracy(preds,out_label_ids)
         eval_loss = eval_loss / nb_eval_steps
         if args.output_mode == "classification":
@@ -246,36 +248,26 @@ def evaluate(args, model, tokenizer, checkpoint=None, prefix="", mode='dev'):
                     logger.info("  %s = %s", key, str(result[key]))
                     writer.write("%s = %s\n" % (key, str(result[key])))
         elif (mode == 'test'):
-            output_test_file = args.test_result_dir
-            output_dir = os.path.dirname(output_test_file)
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-            with open(output_test_file, "w") as writer:
+            output_file = os.path.join(args.test_result_dir, output)
+            if not os.path.exists(args.test_result_dir):
+                os.makedirs(args.test_result_dir)
+            with open(output_file, "w") as writer:
                 logger.info("***** Output test results *****")
                 all_logits = preds.tolist()
                 for i, logit in tqdm(enumerate(all_logits), desc='Testing'):
-                    instance_rep = '<CODESPLIT>'.join(
-                        [item.encode('ascii', 'ignore').decode('ascii') for item in instances[i]])
-
-                    writer.write(instance_rep + '<CODESPLIT>' + '<CODESPLIT>'.join([str(l) for l in logit]) + '\n')
+                    writer.write(str(logit[1]) + '\n')
                 for key in sorted(result.keys()):
                     print("%s = %s" % (key, str(result[key])))
 
     return results
 
 
-def load_and_cache_examples(args, task, tokenizer, ttype='train'):
+def load_and_cache_examples(args, data_dir, task, tokenizer, data_file):
     processor = processors[task]()
     output_mode = output_modes[task]
     # Load data features from cache or dataset file
-    if ttype == 'train':
-        file_name = args.train_file.split('.')[0]
-    elif ttype == 'dev':
-        file_name = args.dev_file.split('.')[0]
-    elif ttype == 'test':
-        file_name = args.test_file.split('.')[0]
-    cached_features_file = os.path.join(args.data_dir, 'cached_{}_{}_{}_{}_{}'.format(
-        ttype,
+    file_name = data_file.split('.')[0]
+    cached_features_file = os.path.join(args.data_dir, 'cached_{}_{}_{}_{}'.format(
         file_name,
         list(filter(None, args.model_name_or_path.split('/'))).pop(),
         str(args.max_seq_length),
@@ -285,17 +277,10 @@ def load_and_cache_examples(args, task, tokenizer, ttype='train'):
     try:
         logger.info("Loading features from cached file %s", cached_features_file)
         features = torch.load(cached_features_file)
-        if ttype == 'test':
-            examples, instances = processor.get_test_examples(args.data_dir, args.test_file)
     except:
-        logger.info("Creating features from dataset file at %s", args.data_dir)
+        logger.info("Creating features from dataset file at %s",data_dir)
         label_list = processor.get_labels()
-        if ttype == 'train':
-            examples = processor.get_train_examples(args.data_dir, args.train_file)
-        elif ttype == 'dev':
-            examples = processor.get_dev_examples(args.data_dir, args.dev_file)
-        elif ttype == 'test':
-            examples, instances = processor.get_test_examples(args.data_dir, args.test_file)
+        examples = processor.get_examples(data_dir, data_file)
 
         features = convert_examples_to_features(examples, label_list, args.max_seq_length, tokenizer, output_mode,
                                                 cls_token_at_end=bool(args.model_type in ['xlnet']),
@@ -317,10 +302,8 @@ def load_and_cache_examples(args, task, tokenizer, ttype='train'):
         all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long)
 
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-    if (ttype == 'test'):
-        return dataset, instances
-    else:
-        return dataset
+
+    return dataset
 
 
 def main():
@@ -404,15 +387,13 @@ def main():
                         help="For distributed training: local_rank")
     parser.add_argument('--server_ip', type=str, default='', help="For distant debugging.")
     parser.add_argument('--server_port', type=str, default='', help="For distant debugging.")
-    parser.add_argument("--train_file", default="train_top10_concat.tsv", type=str,
+    parser.add_argument("--train_file", default="train.txt", type=str,
                         help="train file")
-    parser.add_argument("--dev_file", default="shared_task_dev_top10_concat.tsv", type=str,
+    parser.add_argument("--dev_file", default="valid.txt", type=str,
                         help="dev file")
-    parser.add_argument("--test_file", default="shared_task_dev_top10_concat.tsv", type=str,
-                        help="test file")
     parser.add_argument("--pred_model_dir", default=None, type=str,
                         help='model for prediction')
-    parser.add_argument("--test_result_dir", default='test_results.tsv', type=str,
+    parser.add_argument("--test_result_dir", default='./results/', type=str,
                         help='path to store test result')
     args = parser.parse_args()
 
@@ -524,7 +505,7 @@ def main():
 
     # Training
     if args.do_train:
-        train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, ttype='train')
+        train_dataset = load_and_cache_examples(args, args.data_dir, args.task_name, tokenizer, args.train_file)
         global_step, tr_loss = train(args, train_dataset, model, tokenizer, optimizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
@@ -551,29 +532,21 @@ def main():
         model.to(args.device)
 
     # Evaluation
-    results = {}
     if args.do_eval and args.local_rank in [-1, 0]:
-        checkpoints = [args.output_dir]
-        if args.eval_all_checkpoints:
-            checkpoints = list(
-                os.path.dirname(c) for c in sorted(glob.glob(args.output_dir + '/**/' + WEIGHTS_NAME, recursive=True)))
-            logging.getLogger("pytorch_transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
-        logger.info("Evaluate the following checkpoints: %s", checkpoints)
-        for checkpoint in checkpoints:
-            print(checkpoint)
-            global_step = checkpoint.split('-')[-1] if len(checkpoints) > 1 else ""
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            result = evaluate(args, model, tokenizer, checkpoint=checkpoint, prefix=global_step)
-            result = dict((k + '_{}'.format(global_step), v) for k, v in result.items())
-            results.update(result)
+        model = model_class.from_pretrained(args.pred_model_dir)
+        model.to(args.device)
+        evaluate(args, model, tokenizer, args.dev_file, mode='dev')
+
 
     if args.do_predict:
         print('testing')
         model = model_class.from_pretrained(args.pred_model_dir)
         model.to(args.device)
-        evaluate(args, model, tokenizer, checkpoint=None, prefix='', mode='test')
-    return results
+        test_data_dir = os.path.join(args.data_dir, 'test')
+        for root, dirs, files in os.walk(test_data_dir):
+            for file in files:
+                evaluate(args, model, tokenizer, file, mode='test', output=file)
+
 
 
 if __name__ == "__main__":

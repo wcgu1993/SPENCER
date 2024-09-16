@@ -26,10 +26,6 @@ def preprocess_test_data(language, test_batch_size=1000):
 
     print("start processing")
     for batch_idx, batch_data in enumerate(batched_data):
-        if batch_idx < 17:
-            continue
-        elif batch_idx > 19:
-            continue
         if len(batch_data) < test_batch_size:
             break # the last batch is smaller than the others, exclude.
         examples = []
@@ -44,7 +40,7 @@ def preprocess_test_data(language, test_batch_size=1000):
                 example = '<CODESPLIT>'.join(example)
                 examples.append(example)
 
-        data_path = os.path.join(DATA_DIR, 'test/{}'.format(language))
+        data_path = os.path.join(DATA_DIR, '{}/test'.format(language))
         if not os.path.exists(data_path):
             os.makedirs(data_path)
         file_path = os.path.join(data_path, 'batch_{}.txt'.format(batch_idx))

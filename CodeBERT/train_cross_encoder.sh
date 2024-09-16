@@ -2,13 +2,13 @@ lang=java
 pretrained_model=microsoft/codebert-base  #Roberta: roberta-base
 output_dir=./models/cross_encoder/$lang
 
-CUDA_VISIBLE_DEVICES=0,1 python run_cross_encoder.py \
+CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py \
     --model_type roberta \
     --task_name codesearch \
     --do_train \
     --do_eval \
     --eval_all_checkpoints \
--   -train_file train.txt \
+    --train_file train.txt \
     --dev_file valid.txt \
     --num_train_epochs 10 \
     --max_seq_length 200 \
