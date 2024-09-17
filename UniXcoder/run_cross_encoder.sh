@@ -1,19 +1,19 @@
 lang=java #programming language
-idx=1 #test batch idx
 output_dir=./models/cross_encoder/$lang
 
-
-CUDA_VISIBLE_DEVICES=1 python3 run_cross_encoder.py \
+CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py \
     --output_dir $output_dir \
-    --model_name_or_path microsoft/unixcoder-base  \
+    --model_name_or_path microsoft/unixcoder-base \
+    --model_type roberta \
+    --task_name codesearch \
     --data_dir ../data/cross_encoder/$lang \
-    --do_test \
-    --eval_data_file ../data/dual_encoder/$lang/valid.txt \
+    --do_predict \
+    --train_file train.txt \
+    --dev_file valid.txt \
     --num_train_epochs 10 \
-    --code_length 256 \
-    --nl_length 128 \
-    --train_batch_size 32 \
-    --eval_batch_size 32 \
-    --learning_rate 2e-5 \
-    --test_data_file ../data/cross_encoder/test/$lang/batch_${idx}.txt \
-    --test_result_dir ./results/$lang/${idx}_batch_result.txt
+    --max_seq_length 200 \
+    --test_result_dir ./results/$lang \
+    --per_gpu_train_batch_size 32 \
+    --per_gpu_eval_batch_size 32 \
+    --learning_rate 1e-5 \
+    --pred_model_dir ./models/cross_encoder/$lang/checkpoint-best/ 

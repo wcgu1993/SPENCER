@@ -15,7 +15,7 @@ def main():
     languages = ['java']
     MRR_dict = {}
     for language in languages:
-        file_dir = './new_test_results/{}'.format(language)
+        file_dir = './results/{}'.format(language)
         accs1, accs3, accs5 = [], [], []
         ranks = []
         num_batch = 0

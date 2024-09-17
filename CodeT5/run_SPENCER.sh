@@ -1,23 +1,27 @@
 lang=python
-saved_dir=./saved_models/dual_encoder/$lang
-output_dir=./saved_models/dual_encoder_12_to_3_rerun/$lang
-cross_output_dir=./saved_models/cross_encoder/$lang
-mkdir -p $output_dir
+pretrained_model=Salesforce/codet5-base  #Roberta: roberta-base
+output_dir=./models/dual_encoder/$lang
 
-
-CUDA_VISIBLE_DEVICES=0,1,2,3 python run_SPENCER.py \
-    --language $lang \
-    --saved_dir $saved_dir \
+CUDA_VISIBLE_DEVICES=0 python run_SPENCER.py \
     --output_dir $output_dir \
-    --cross_output_dir $cross_output_dir \
-    --model_name_or_path Salesforce/codet5-base  \
-    --do_eval \
-    --train_data_file ../data/dual_encoder/$lang/train.txt \
-    --eval_data_file ../data/dual_encoder/$lang/test.txt \
+    --task_name codesearch \
+    --model_type roberta \
+	--evaluate_during_training \
+	--do_eval \
+	--eval_all_checkpoints \
+    --language $lang \
+    --top_k 5 \
+    --data_dir ../data/dual_encoder/$lang \
+	--train_file train.txt \
+	--dev_file valid.txt \
+	--test_file test.txt \
+    --reduce_layer_num 3 \
     --num_train_epochs 10 \
-    --code_length 256 \
-    --nl_length 64 \
-    --train_batch_size 32 \
-    --eval_batch_size 32 \
-    --learning_rate 2e-5 \
-    --seed 123456
+	--max_seq_length 200 \
+	--gradient_accumulation_steps 1 \
+    --overwrite_output_dir \
+	--per_gpu_train_batch_size 8 \
+	--per_gpu_eval_batch_size 32 \
+	--model_name_or_path $pretrained_model \
+    --learning_rate 1e-5 \
+	--logging_steps 5000
