@@ -1,19 +1,16 @@
-lang=java #programming language
-output_dir=./models/cross_encoder/$lang
-
-CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py \
-    --output_dir $output_dir \
-    --model_name_or_path microsoft/unixcoder-base \
-    --model_type roberta \
-    --task_name codesearch \
+lang=python
+CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py  \
+    --output_dir ./saved_models/cross_encoder/$lang \
+    --model_name_or_path microsoft/unixcoder-base  \
+    --do_eval \
+    --do_test \
     --data_dir ../data/cross_encoder/$lang \
-    --do_predict \
-    --train_file train.txt \
-    --dev_file valid.txt \
+    --train_data_file ../data/cross_encoder/$lang/train.txt \
+    --eval_data_file ../data/cross_encoder/$lang/valid.txt \
     --num_train_epochs 10 \
-    --max_seq_length 200 \
+    --input_length 384 \
     --test_result_dir ./results/$lang \
-    --per_gpu_train_batch_size 32 \
-    --per_gpu_eval_batch_size 32 \
+    --train_batch_size 8 \
+    --eval_batch_size 64 \
     --learning_rate 1e-5 \
-    --pred_model_dir ./models/cross_encoder/$lang/checkpoint-best/ 
+    --seed 123456 

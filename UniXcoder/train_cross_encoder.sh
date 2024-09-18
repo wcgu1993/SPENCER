@@ -1,25 +1,15 @@
-lang=java
-pretrained_model=microsoft/unixcoder-base  #Roberta: roberta-base
-output_dir=./models/cross_encoder/$lang
-
-CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py \
-    --model_type roberta \
-    --task_name codesearch \
+# Training
+lang=python
+CUDA_VISIBLE_DEVICES=0 python run_cross_encoder.py  \
+    --output_dir ./saved_models/cross_encoder/$lang \
+    --model_name_or_path microsoft/unixcoder-base  \
     --do_train \
-    --do_eval \
-    --eval_all_checkpoints \
-    --train_file train.txt \
-    --dev_file valid.txt \
+    --train_data_file ../data/cross_encoder/$lang/train.txt \
+    --eval_data_file ../data/cross_encoder/$lang/valid.txt \
     --num_train_epochs 10 \
-    --max_seq_length 200 \
-    --per_gpu_train_batch_size 32 \
-    --per_gpu_eval_batch_size 32 \
-    --gradient_accumulation_steps 1 \
-    --overwrite_output_dir \
-    --data_dir ../data/cross_encoder/$lang \
-    --output_dir $output_dir  \
-    --model_name_or_path $pretrained_model \
+    --input_length 384 \
+    --train_batch_size 8 \
+    --eval_batch_size 64 \
     --learning_rate 1e-5 \
-    --seed 123456 2>&1 | tee $output_dir/train.log
-
+    --seed 123456 
 
