@@ -92,7 +92,7 @@ def load_and_cache_examples(args, task, tokenizer, ttype='train'):
     return dataset
 
 
-def train(args, code_model, query_model, distillated_model, optimizer, train_dataset, tokenizer, saved_dir):
+def train(args, code_model, query_model, distilled_model, optimizer, train_dataset, tokenizer, saved_dir):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
@@ -123,10 +123,10 @@ def train(args, code_model, query_model, distillated_model, optimizer, train_dat
     torch.set_printoptions(profile="full")
 
     tr_loss, logging_loss = 0.0, 0.0
-    distillated_model.zero_grad()
+    distilled_model.zero_grad()
     tr_num = 0
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
-    distillated_model.train()
+    distilled_model.train()
 
     for idx in range(args.num_train_epochs):
         tr_loss = 0.0
@@ -151,20 +151,20 @@ def train(args, code_model, query_model, distillated_model, optimizer, train_dat
                 code_outputs = code_outputs.pooler_output
                 summary_outputs = summary_outputs.pooler_output
             
-            distillated_summary_outputs = distillated_model(**summary_inputs)
-            distillated_summary_outputs = distillated_summary_outputs.pooler_output
+            distilled_summary_outputs = distilled_model(**summary_inputs)
+            distilled_summary_outputs = distilled_summary_outputs.pooler_output
 
             code_outputs = F.normalize(code_outputs, dim = 1)
             summary_outputs = F.normalize(summary_outputs, dim = 1)
-            distillated_summary_outputs = F.normalize(distillated_summary_outputs, dim = 1)
+            distilled_summary_outputs = F.normalize(distilled_summary_outputs, dim = 1)
             
             dual_similarity = torch.einsum("ab,cb->ac",code_outputs,summary_outputs)
 
-            distillated_dual_similarity = torch.einsum("ab,cb->ac", code_outputs, distillated_summary_outputs)
-            distillated_query_similarity = torch.sum(torch.mul(summary_outputs, distillated_summary_outputs), dim=1)
-            query_similarity = torch.ones_like(distillated_query_similarity)
+            distilled_dual_similarity = torch.einsum("ab,cb->ac", code_outputs, distilled_summary_outputs)
+            distilled_query_similarity = torch.sum(torch.mul(summary_outputs, distilled_summary_outputs), dim=1)
+            query_similarity = torch.ones_like(distilled_query_similarity)
             
-            loss = torch.abs(dual_similarity - distillated_dual_similarity).sum() + torch.abs(query_similarity - distillated_query_similarity).sum()
+            loss = torch.abs(dual_similarity - distilled_dual_similarity).sum() + torch.abs(query_similarity - distilled_query_similarity).sum()
             
 
             #report loss
@@ -177,13 +177,13 @@ def train(args, code_model, query_model, distillated_model, optimizer, train_dat
             
             #backward
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(distillated_model.parameters(), args.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(distilled_model.parameters(), args.max_grad_norm)
             optimizer.step()
             optimizer.zero_grad()
             scheduler.step() 
             
         #evaluate    
-        results = evaluate(args, code_model, distillated_model, tokenizer)
+        results = evaluate(args, code_model, distilled_model, tokenizer)
         for key, value in results.items():
             logger.info("  %s = %s", key, round(value,4))    
             
@@ -196,10 +196,10 @@ def train(args, code_model, query_model, distillated_model, optimizer, train_dat
                      
             if not os.path.exists(saved_dir):
                 os.makedirs(saved_dir)                        
-            distillated_model.save_pretrained(saved_dir) 
+            distilled_model.save_pretrained(saved_dir) 
             logger.info("Saving model checkpoint to %s", saved_dir)
         
-        return distillated_model
+        return distilled_model
 
 
 def evaluate(args, code_model, query_model, tokenizer):
@@ -438,76 +438,76 @@ def main():
         code_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'code_model'))
         query_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'query_model'))
         config.num_hidden_layers = max(last_layer_num - args.reduce_layer_num, 1)
-        distillated_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'query_model'), config=config)
+        distilled_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'query_model'), config=config)
         logger.info("Training/evaluation parameters %s", args)
     
         code_model.to(args.device)
         query_model.to(args.device)
-        distillated_model.to(args.device)
+        distilled_model.to(args.device)
         if args.n_gpu > 1:
             code_model = torch.nn.DataParallel(code_model)  
             query_model = torch.nn.DataParallel(query_model)
-            distillated_model = torch.nn.DataParallel(distillated_model)
+            distilled_model = torch.nn.DataParallel(distilled_model)
 
         # Prepare optimizer and schedule (linear warmup and decay)
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
-            {'params': [p for n, p in distillated_model.named_parameters() if not any(nd in n for nd in no_decay)],
+            {'params': [p for n, p in distilled_model.named_parameters() if not any(nd in n for nd in no_decay)],
             'weight_decay': args.weight_decay},
-            {'params': [p for n, p in distillated_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+            {'params': [p for n, p in distilled_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
    
         optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
         saved_dir = os.path.join(args.output_dir, "query_model_{}_to_{}_layer".format(last_layer_num, config.num_hidden_layers))
-        ta_model = train(args, code_model, query_model, distillated_model, optimizer, train_dataset, tokenizer, saved_dir)
+        ta_model = train(args, code_model, query_model, distilled_model, optimizer, train_dataset, tokenizer, saved_dir)
         teacher_model = query_model
         results = evaluate(args, code_model, query_model, tokenizer)
         original_mrr = results['mrr']
-        distillated_results = evaluate(args, code_model, query_model, tokenizer)
-        distillated_mrr = distillated_results['mrr']
+        distilled_results = evaluate(args, code_model, query_model, tokenizer)
+        distilled_mrr = distilled_results['mrr']
         best_distillation_dir = os.path.join(args.output_dir, 'query_model')
 
-        if distillated_mrr / original_mrr < 0.01:
+        if distilled_mrr / original_mrr < 0.01:
             best_distillation_dir = saved_dir
 
         last_layer_num = config.num_hidden_layers
 
-        while config.num_hidden_layers > 1 and distillated_mrr / original_mrr < 0.01:
+        while config.num_hidden_layers > 1 and distilled_mrr / original_mrr < 0.01:
             config.num_hidden_layers = max(last_layer_num - args.reduce_layer_num, 1)
-            distillated_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'query_model'), config=config)
-            distillated_model.to(args.device)
+            distilled_model = RobertaModel.from_pretrained(os.path.join(args.output_dir, 'query_model'), config=config)
+            distilled_model.to(args.device)
 
             optimizer_grouped_parameters = [
-                {'params': [p for n, p in distillated_model.named_parameters() if not any(nd in n for nd in no_decay)],
+                {'params': [p for n, p in distilled_model.named_parameters() if not any(nd in n for nd in no_decay)],
                 'weight_decay': args.weight_decay},
-                {'params': [p for n, p in distillated_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+                {'params': [p for n, p in distilled_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
             ]
    
             optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
             
             teacher_saved_dir = os.path.join(args.output_dir, "query_model_{}_to_{}_layer".format(teacher_layer_num, config.num_hidden_layers))
-            teacher_distillated_model = train(args, code_model, teacher_model, distillated_model, optimizer, train_dataset, tokenizer, teacher_saved_dir)
+            teacher_distilled_model = train(args, code_model, teacher_model, distilled_model, optimizer, train_dataset, tokenizer, teacher_saved_dir)
 
             ta_saved_dir = os.path.join(args.output_dir, "query_model_{}_to_{}_layer".format(ta_layer_num, config.num_hidden_layers))
-            ta_distillated_model = train(args, code_model, ta_model, distillated_model, optimizer, train_dataset, tokenizer, ta_saved_dir)
-            teacher_results = evaluate(args, code_model, teacher_distillated_model, tokenizer)
+            ta_distilled_model = train(args, code_model, ta_model, distilled_model, optimizer, train_dataset, tokenizer, ta_saved_dir)
+            teacher_results = evaluate(args, code_model, teacher_distilled_model, tokenizer)
             teacher_mrr = teacher_results['mrrs']
-            ta_results = evaluate(args, code_model, ta_distillated_model, tokenizer)
+            ta_results = evaluate(args, code_model, ta_distilled_model, tokenizer)
             ta_mrr = ta_results['mrr']
             if teacher_mrr > ta_mrr:
                 if teacher_mrr / original_mrr:
                     best_distillation_dir = teacher_saved_dir
-                ta_model = teacher_distillated_model
+                ta_model = teacher_distilled_model
                 ta_layer_num = config.num_hidden_layers
-                distillated_mrr = teacher_mrr
+                distilled_mrr = teacher_mrr
             else:
                 if ta_mrr / original_mrr:
                     best_distillation_dir = ta_saved_dir
                 teacher_model = ta_model
                 teacher_layer_num = ta_layer_num
-                ta_model = ta_distillated_model
+                ta_model = ta_distilled_model
                 ta_layer_num = config.num_hidden_layers
-                distillated_mrr = ta_mrr
+                distilled_mrr = ta_mrr
 
             last_layer_num = config.num_hidden_layers
         
